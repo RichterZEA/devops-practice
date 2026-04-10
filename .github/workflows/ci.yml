@@ -1,4 +1,4 @@
-name: CI Pipeline
+name: CI/CD Pipeline
 
 on:
   push:
@@ -6,15 +6,35 @@ on:
       - master
 
 jobs:
-  check:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
+      # 1. Завантажуємо код
       - name: Отримати код
         uses: actions/checkout@v3
 
-      - name: Показати файли репозиторію
-        run: ls -la
+      # 2. Логінимось на Docker Hub
+      - name: Логін на Docker Hub
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
-      - name: Перевірити bash скрипт
-        run: bash monitoring.sh
+      # 3. Збираємо image
+      - name: Зібрати Docker image
+        run: docker build -t ${{ secrets.DOCKER_USERNAME }}/my-monitoring:latest .
+
+      # 4. Публікуємо image на Docker Hub
+      - name: Опублікувати image
+        run: docker push ${{ secrets.DOCKER_USERNAME }}/my-monitoring:latest
+
+      # 5. Деплоїмо на сервер
+      - name: Деплой на сервер
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            docker pull ${{ secrets.DOCKER_USERNAME }}/my-monitoring:latest
+            docker stop my-monitoring || true
+            docker rm my-monitoring || true
+            docker run -d --name my-monitoring ${{ secrets.DOCKER_USERNAME }}/my-monitoring:latest
